@@ -2,7 +2,7 @@ const Web3 = require('web3')
 const web3 = new Web3('ws://127.0.0.1:7545')
 const tabAbi = require('../build/contracts/CustomerTab.json')
 const ownerAddress = '0x33c666579F78Df432CCd451037200937E88475e4'
-const tabContract = new web3.eth.contract(tabAbi.abi, ownerAddress)
+const tabContract = new web3.eth.Contract(tabAbi.abi, ownerAddress)
 const { unixToFullTime } = require('./time_funs.js')
 
 const pubKey = '0xa467f2ACA8801a63eA9bBA15d5D64344e9c3Abfe'
@@ -35,12 +35,18 @@ async function addItem(_customerPubKey, _itemID, _price) {
 }
 
 async function getTab(_customerPubKey) {
+  let response
   try {
-    result = await tabContract.methods.getTabForCustomer(_customerPubKey).call()
-    return result
+    await tabContract.methods
+      .getTabForCustomer(_customerPubKey)
+      .call()
+      .then((tab) => {
+        response = tab
+      })
   } catch (err) {
     console.log(err)
   }
+  return response
 }
 
 async function resetTab(_customerPubKey) {
@@ -53,14 +59,14 @@ async function resetTab(_customerPubKey) {
   }
 }
 
-async function itemPaid(_customerPubKey, _itemID) {
+async function removeItem(_customerPubKey, _itemID) {
   let response = ''
   try {
     await tabContract.methods
       .itemPaidByCustomer(_customerPubKey, _itemID)
       .send({ from: ownerAddress, gas: gasLimit })
-      .once('receipt', (receipt) => {
-        response = { 0: receipt.transactionHash }
+      .once('receipt', () => {
+        response = { 0: _itemID + 'removed' }
       })
     onabort('error', (error) => {
       response = error
@@ -69,4 +75,36 @@ async function itemPaid(_customerPubKey, _itemID) {
     console.log(err)
   }
   return response
+}
+
+/**
+ *
+ * @function trackAdded
+ * @function trackAll
+ * This is a function for events emitted
+ */
+
+function trackAdded(_customerPubKey) {
+  try {
+    tabContract.events
+      .itemSold({ filter: { customerPubKey: _customerPubKey } })
+      .on('data', (event) => {
+        event['myField'] = 'added'
+        logInfo(event)
+      })
+  } catch (err) {
+    console.log(err)
+  }
+}
+
+function trackAll(_customerPubKey) {
+  try {
+    tabContract.events.allEvents().on('data', (event) => {
+      let myField = event.event == 'ItemSold' ? 'added' : 'removed'
+      event['myField'] = myField
+      logInfo(event)
+    })
+  } catch (err) {
+    console.log(err)
+  }
 }
